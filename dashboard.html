@@ -1,0 +1,438 @@
+<title>WHOOP Stats Board</title>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Public+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: summary tiles up top, then one full-width chart per measure, workouts last. */
+:root {
+  --bg: #f4f6f6; --surface: #fcfcfb; --fg: #0f1716; --fg2: #4a5553; --muted: #858d8b;
+  --grid: #e1e4e2; --axis: #c1c8c6; --line: rgba(15,23,22,.10); --accent: #0e6e66; --accent-ink: #ffffff;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --good: #0ca30c; --warn: #fab219; --crit: #d03b3b;
+  --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif;
+  --body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0c1110; --surface: #171c1b; --fg: #f3f6f5; --fg2: #bfc7c4; --muted: #87908d;
+  --grid: #283030; --axis: #39423f; --line: rgba(255,255,255,.10); --accent: #3cb7aa; --accent-ink: #06201d;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0c1110; --surface: #171c1b; --fg: #f3f6f5; --fg2: #bfc7c4; --muted: #87908d;
+  --grid: #283030; --axis: #39423f; --line: rgba(255,255,255,.10); --accent: #3cb7aa; --accent-ink: #06201d;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 var(--body); }
+.wrap { max-width: 1080px; margin: 0 auto; padding-inline: 16px; padding-block: 24px 48px; display: grid; gap: 20px; }
+header { display: flex; flex-wrap: wrap; gap: 12px 24px; align-items: end; justify-content: space-between; }
+h1 { font: 700 2.4rem/1 var(--display); letter-spacing: .01em; margin: 0; text-transform: uppercase; text-wrap: balance; }
+h2 { font: 600 1.25rem/1.1 var(--display); letter-spacing: .04em; text-transform: uppercase; margin: 0; }
+.sub { color: var(--fg2); margin: 6px 0 0; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+button, .btn { font: 500 .9rem var(--body); border-radius: 8px; padding: 8px 14px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface); color: var(--fg); }
+.btn.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; }
+button:focus-visible, .btn:focus-within, summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.banner { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; padding: 10px 14px; border-radius: 10px;
+  border: 1px dashed var(--axis); color: var(--fg2); font-size: .9rem; }
+.banner b { color: var(--fg); }
+.banner.err { border-style: solid; border-color: var(--crit); }
+.drop { outline: 2px dashed var(--accent); outline-offset: 6px; }
+
+.ranges { display: flex; gap: 4px; padding: 3px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); width: fit-content; }
+.ranges button { border: 0; background: transparent; padding: 6px 12px; font-family: var(--mono); font-size: .8rem; }
+.ranges button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
+
+.tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; display: grid; gap: 2px; align-content: start; }
+.tile .k { font: 500 .72rem var(--mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+.tile .v { font: 600 2.6rem/1 var(--display); }
+.tile .v small { font-size: 1rem; font-weight: 500; color: var(--fg2); margin-left: 3px; }
+.tile .d { font-size: .8rem; color: var(--fg2); }
+.chip { display: inline-flex; align-items: center; gap: 6px; font: 500 .75rem var(--mono); color: var(--fg2); }
+.chip i { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: grid; gap: 10px; min-width: 0; }
+.card-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 6px 16px; }
+.card-head p { margin: 0; color: var(--fg2); font-size: .85rem; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+@media (max-width: 400px) { .grid2 { grid-template-columns: 1fr; } }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: .8rem; color: var(--fg2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+.chart { position: relative; min-width: 0; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; touch-action: pan-y; }
+.chart text { font: 11px var(--mono); fill: var(--muted); font-variant-numeric: tabular-nums; }
+.chart .gl { stroke: var(--grid); stroke-width: 1; }
+.chart .base { stroke: var(--axis); stroke-width: 1; }
+.chart .xh { stroke: var(--fg2); stroke-width: 1; }
+.chart .endlbl { fill: var(--fg); font-weight: 500; }
+.chart .ring { stroke: var(--surface); stroke-width: 2; }
+.tip { position: absolute; top: 0; pointer-events: none; background: var(--fg); color: var(--bg); border-radius: 8px;
+  padding: 6px 9px; font: 12px/1.4 var(--mono); white-space: nowrap; transform: translateX(-50%); z-index: 2; }
+.tip b { font-weight: 500; }
+.empty { color: var(--muted); font-size: .9rem; padding: 24px 0; }
+
+.tbl { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: .85rem; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 7px 10px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { font: 500 .7rem var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+details summary { cursor: pointer; color: var(--fg2); font-size: .9rem; }
+footer { color: var(--muted); font-size: .8rem; }
+code { font-family: var(--mono); font-size: .85em; }
+@media (prefers-reduced-motion: no-preference) { .ranges button { transition: background .15s; } }
+</style>
+
+<div class="wrap" id="app">
+  <header>
+    <div>
+      <h1 id="who">WHOOP Stats Board</h1>
+      <p class="sub">Recovery, HRV, sleep and strain from your <code>whoop_data.json</code> export.</p>
+    </div>
+    <div class="actions">
+      <label class="btn primary" for="file">Load whoop_data.json<input id="file" type="file" accept=".json,application/json"></label>
+      <button id="demo" type="button">Show sample data</button>
+    </div>
+  </header>
+
+  <div class="banner" id="banner"></div>
+
+  <div class="ranges" role="group" aria-label="Date range">
+    <button type="button" data-r="7">7D</button><button type="button" data-r="30">30D</button>
+    <button type="button" data-r="90">90D</button><button type="button" data-r="0">ALL</button>
+  </div>
+
+  <section class="tiles" id="tiles"></section>
+
+  <section class="card">
+    <div class="card-head"><h2>Recovery</h2><p>Daily recovery score, 0–100%</p></div>
+    <div class="legend">
+      <span><i style="background:var(--good)"></i>Green · 67–100</span>
+      <span><i style="background:var(--warn)"></i>Yellow · 34–66</span>
+      <span><i style="background:var(--crit)"></i>Red · 0–33</span>
+    </div>
+    <div class="chart" id="c-rec"></div>
+  </section>
+
+  <div class="grid2">
+    <section class="card"><div class="card-head"><h2>HRV</h2><p>RMSSD, ms</p></div><div class="chart" id="c-hrv"></div></section>
+    <section class="card"><div class="card-head"><h2>Resting heart rate</h2><p>bpm</p></div><div class="chart" id="c-rhr"></div></section>
+  </div>
+
+  <section class="card">
+    <div class="card-head"><h2>Sleep</h2><p>Hours per night by stage (naps excluded)</p></div>
+    <div class="legend">
+      <span><i style="background:var(--s1)"></i>Deep (SWS)</span><span><i style="background:var(--s2)"></i>REM</span>
+      <span><i style="background:var(--s3)"></i>Light</span><span><i style="background:var(--s4)"></i>Awake</span>
+    </div>
+    <div class="chart" id="c-sleep"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Day strain</h2><p>WHOOP strain scale, 0–21</p></div>
+    <div class="chart" id="c-strain"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>Workouts</h2><p id="wk-sub"></p></div>
+    <div class="tbl" id="wk"></div>
+  </section>
+
+  <section class="card">
+    <details>
+      <summary>Daily table</summary>
+      <div class="tbl" id="daily" style="margin-top:10px"></div>
+    </details>
+  </section>
+
+  <footer>Your file is read in this browser only and is never uploaded. Create it with <code>python whoop.py</code> or <code>python whoop_phone.py</code>.</footer>
+</div>
+
+<script>
+(() => {
+const KEY = "whoop-stats-board";
+const $ = s => document.querySelector(s);
+const NS = "http://www.w3.org/2000/svg";
+const DAY = 864e5;
+let raw = null, isSample = true, range = 30;
+
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return null; } },
+  set(k, v) { try { localStorage.setItem(k, v); return true; } catch { return false; } },
+  del(k) { try { localStorage.removeItem(k); } catch {} },
+};
+
+// ---------- data ----------
+const ymd = d => { const x = new Date(d); return x.getFullYear() + "-" + String(x.getMonth() + 1).padStart(2, "0") + "-" + String(x.getDate()).padStart(2, "0"); };
+const fmtDay = d => new Date(d + "T12:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
+const hrs = ms => ms / 36e5;
+const scored = r => r && r.score && (r.score_state ? r.score_state === "SCORED" : true);
+
+function normalize(data) {
+  if (!data || typeof data !== "object" || !["recovery", "cycles", "sleep", "workouts"].some(k => Array.isArray(data[k])))
+    throw new Error("This file doesn't look like a WHOOP export. Pick the whoop_data.json made by whoop.py.");
+  const days = new Map();
+  const at = k => days.get(k) || (days.set(k, { day: k }), days.get(k));
+  const cycStart = new Map();
+  for (const c of data.cycles || []) {
+    cycStart.set(c.id, c.start);
+    if (!scored(c)) continue;
+    const d = at(ymd(c.start));
+    d.strain = c.score.strain; d.kj = c.score.kilojoule; d.avgHr = c.score.average_heart_rate;
+  }
+  for (const r of data.recovery || []) {
+    if (!scored(r)) continue;
+    const d = at(ymd(cycStart.get(r.cycle_id) || r.created_at));
+    const s = r.score;
+    d.rec = s.recovery_score; d.hrv = s.hrv_rmssd_milli; d.rhr = s.resting_heart_rate;
+    d.spo2 = s.spo2_percentage; d.skin = s.skin_temp_celsius;
+  }
+  for (const s of data.sleep || []) {
+    if (s.nap || !scored(s)) continue;
+    const st = s.score.stage_summary || {};
+    const d = at(ymd(s.end)); // the morning you woke up
+    d.deep = hrs(st.total_slow_wave_sleep_time_milli || 0);
+    d.remH = hrs(st.total_rem_sleep_time_milli || 0);
+    d.light = hrs(st.total_light_sleep_time_milli || 0);
+    d.awake = hrs(st.total_awake_time_milli || 0);
+    d.sleep = d.deep + d.remH + d.light;
+    d.perf = s.score.sleep_performance_percentage; d.resp = s.score.respiratory_rate;
+  }
+  const workouts = (data.workouts || []).filter(scored).map(w => ({
+    day: ymd(w.start), sport: w.sport_name || "Activity", strain: w.score.strain,
+    min: (new Date(w.end) - new Date(w.start)) / 6e4, avgHr: w.score.average_heart_rate,
+    kj: w.score.kilojoule, km: w.score.distance_meter ? w.score.distance_meter / 1000 : 0,
+  }));
+  const p = data.profile || {};
+  return { days: [...days.values()].sort((a, b) => a.day < b.day ? -1 : 1), workouts,
+    name: [p.first_name, p.last_name].filter(Boolean).join(" ") };
+}
+
+// Sample data in the same shape the WHOOP v2 API returns, so it goes through the real parser.
+function sample() {
+  let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const out = { profile: { first_name: "Sample", last_name: "Athlete" }, recovery: [], cycles: [], sleep: [], workouts: [] };
+  const today = new Date(); today.setHours(7, 0, 0, 0);
+  let hrv = 62, rhr = 54, load = 10;
+  const sports = ["Running", "Cycling", "Weightlifting", "Yoga", "Running", "Functional Fitness"];
+  for (let i = 179; i >= 0; i--) {
+    const wake = new Date(today - i * DAY), id = 1000 + i;
+    const sleepH = 6.2 + rnd() * 2.4 - (load > 15 ? .4 : 0);
+    hrv = Math.max(28, Math.min(110, hrv + (rnd() - .5) * 9 + (62 - hrv) * .15 - (load - 11) * .5 + (sleepH - 7) * 2));
+    rhr = Math.max(44, Math.min(68, rhr + (rnd() - .5) * 2 + (54 - rhr) * .2 + (load - 11) * .08));
+    const rec = Math.round(Math.max(4, Math.min(99, 56 + (hrv - 62) * 1.3 - (rhr - 54) * 2 + (sleepH - 7) * 7 + (rnd() - .5) * 14)));
+    const cStart = new Date(+wake - 30 * 60e3);
+    out.cycles.push({ id, start: cStart.toISOString(), end: new Date(+cStart + DAY).toISOString(), score_state: "SCORED",
+      score: { strain: load = +(Math.max(3, Math.min(20.5, 6 + rnd() * 9 + (rec > 66 ? 3 : 0)))).toFixed(1), kilojoule: 8000 + rnd() * 6000, average_heart_rate: 66 + Math.round(rnd() * 10) } });
+    out.recovery.push({ cycle_id: id, created_at: wake.toISOString(), score_state: "SCORED",
+      score: { recovery_score: rec, resting_heart_rate: Math.round(rhr), hrv_rmssd_milli: +hrv.toFixed(1), spo2_percentage: 95 + rnd() * 3, skin_temp_celsius: 33.4 + rnd() } });
+    const ms = h => Math.round(h * 36e5);
+    out.sleep.push({ id: "s" + i, cycle_id: id, nap: false, start: new Date(+wake - ms(sleepH + .6)).toISOString(), end: wake.toISOString(), score_state: "SCORED",
+      score: { sleep_performance_percentage: Math.round(Math.min(100, sleepH / 8 * 100)), respiratory_rate: 14 + rnd() * 2,
+        stage_summary: { total_slow_wave_sleep_time_milli: ms(sleepH * (.18 + rnd() * .06)), total_rem_sleep_time_milli: ms(sleepH * (.2 + rnd() * .06)),
+          total_light_sleep_time_milli: ms(sleepH * (.5 + rnd() * .04)), total_awake_time_milli: ms(.3 + rnd() * .5) } } });
+    if (rnd() < .7) {
+      const s = new Date(+wake + 10 * 36e5), dur = 30 + rnd() * 60, sport = sports[Math.floor(rnd() * sports.length)];
+      out.workouts.push({ id: "w" + i, start: s.toISOString(), end: new Date(+s + dur * 6e4).toISOString(), sport_name: sport, score_state: "SCORED",
+        score: { strain: +(6 + rnd() * 10).toFixed(1), average_heart_rate: 120 + Math.round(rnd() * 35), kilojoule: dur * 40, distance_meter: /Run|Cycl/.test(sport) ? dur * (sport === "Running" ? 170 : 450) : null } });
+    }
+  }
+  return out;
+}
+
+// ---------- chart helpers ----------
+const svgEl = (tag, a = {}, parent) => { const e = document.createElementNS(NS, tag); for (const k in a) e.setAttribute(k, a[k]); parent && parent.appendChild(e); return e; };
+function niceTicks(lo, hi, n = 4) {
+  const span = hi - lo || 1, raw = span / n, mag = 10 ** Math.floor(Math.log10(raw));
+  const step = [1, 2, 5, 10].map(m => m * mag).find(s => s >= raw);
+  const t = []; for (let v = Math.floor(lo / step) * step; v <= hi + step * 1e-9; v += step) t.push(+v.toFixed(6));
+  if (t[t.length - 1] < hi) t.push(+(t[t.length - 1] + step).toFixed(6));
+  return t;
+}
+const nf = (v, d = 0) => v == null || isNaN(v) ? "–" : v.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+
+// frame(): draws grid + y ticks + x date labels, returns scales.
+function frame(host, days, yLo, yHi, fmt, H = 210, fixed) {
+  host.innerHTML = "";
+  const W = Math.max(280, host.clientWidth), m = { t: 14, r: 46, b: 24, l: 36 };
+  const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, role: "img" }, host);
+  const ticks = fixed || niceTicks(yLo, yHi);
+  const lo = ticks[0], hi = ticks[ticks.length - 1];
+  const pw = W - m.l - m.r, ph = H - m.t - m.b;
+  const n = days.length, band = pw / n;
+  const x = i => m.l + band * (i + .5);
+  const y = v => m.t + ph - (v - lo) / (hi - lo) * ph;
+  ticks.forEach((t, i) => {
+    svgEl("line", { x1: m.l, x2: W - m.r, y1: y(t), y2: y(t), class: i ? "gl" : "base" }, svg);
+    svgEl("text", { x: m.l - 6, y: y(t) + 4, "text-anchor": "end" }, svg).textContent = fmt(t);
+  });
+  const idx = n > 2 ? [0, Math.floor((n - 1) / 2), n - 1] : [...Array(n).keys()];
+  idx.forEach((i, j) => svgEl("text", { x: x(i), y: H - 6, "text-anchor": j === 0 && n > 2 ? "start" : j === idx.length - 1 && n > 2 ? "end" : "middle" }, svg).textContent = fmtDay(days[i].day));
+  const tip = document.createElement("div"); tip.className = "tip"; tip.hidden = true; host.appendChild(tip);
+  const xh = svgEl("line", { y1: m.t, y2: m.t + ph, class: "xh", visibility: "hidden" }, svg);
+  return { svg, W, H, m, pw, ph, band, x, y, lo, hi, tip, xh, n };
+}
+
+function hover(f, days, html, onMove) {
+  const hit = svgEl("rect", { x: f.m.l, y: 0, width: f.pw, height: f.H, fill: "transparent" }, f.svg);
+  const move = e => {
+    const r = f.svg.getBoundingClientRect(), px = ((e.touches ? e.touches[0].clientX : e.clientX) - r.left) * f.W / r.width;
+    const i = Math.max(0, Math.min(f.n - 1, Math.floor((px - f.m.l) / f.band)));
+    const xs = f.x(i);
+    f.xh.setAttribute("x1", xs); f.xh.setAttribute("x2", xs); f.xh.setAttribute("visibility", "visible");
+    f.tip.innerHTML = `<b>${fmtDay(days[i].day)}</b><br>` + html(days[i]); f.tip.hidden = false;
+    const left = xs * r.width / f.W, half = f.tip.offsetWidth / 2;
+    f.tip.style.left = Math.max(half, Math.min(r.width - half, left)) + "px";
+    f.tip.style.top = "-8px"; f.tip.style.transform = `translate(-50%, -100%)`;
+    onMove && onMove(i);
+  };
+  const leave = () => { f.tip.hidden = true; f.xh.setAttribute("visibility", "hidden"); onMove && onMove(-1); };
+  hit.addEventListener("pointermove", move); hit.addEventListener("pointerdown", move);
+  hit.addEventListener("pointerleave", leave);
+}
+
+// Rounded-top bar path: 4px radius at the data end, square at the baseline.
+function barPath(x, y0, y1, w) {
+  const h = y0 - y1; if (h <= 0) return "";
+  const r = Math.min(4, w / 2, h);
+  return `M${x},${y0}V${y1 + r}Q${x},${y1} ${x + r},${y1}H${x + w - r}Q${x + w},${y1} ${x + w},${y1 + r}V${y0}Z`;
+}
+
+function lineChart(host, days, key, opt) {
+  const pts = days.map((d, i) => [i, d[key]]).filter(p => p[1] != null);
+  if (pts.length < 2) { host.innerHTML = '<p class="empty">Not enough data in this range.</p>'; return; }
+  const vals = pts.map(p => p[1]), pad = (Math.max(...vals) - Math.min(...vals)) * .1 || 1;
+  const f = frame(host, days, Math.max(0, Math.min(...vals) - pad), Math.max(...vals) + pad, v => nf(v));
+  let d = "", prev = -2;
+  for (const [i, v] of pts) { d += (i === prev + 1 ? "L" : "M") + f.x(i).toFixed(1) + "," + f.y(v).toFixed(1); prev = i; }
+  const first = pts[0][0], last = pts[pts.length - 1][0];
+  const area = "M" + f.x(first) + "," + f.y(f.lo) + pts.map(([i, v]) => `L${f.x(i)},${f.y(v)}`).join("") + `L${f.x(last)},${f.y(f.lo)}Z`;
+  svgEl("path", { d: area, style: `fill:var(${opt.color});opacity:.1;stroke:none` }, f.svg);
+  svgEl("path", { d, style: `fill:none;stroke:var(${opt.color});stroke-width:2;stroke-linejoin:round;stroke-linecap:round` }, f.svg);
+  // 7-day average as a thin muted reference line
+  const avg = days.map((_, i) => { const w = days.slice(Math.max(0, i - 6), i + 1).map(x => x[key]).filter(v => v != null); return w.length ? w.reduce((a, b) => a + b) / w.length : null; });
+  if (days.length > 14) svgEl("path", { d: avg.map((v, i) => v == null ? "" : (i ? "L" : "M") + f.x(i) + "," + f.y(v)).join(""), style: "fill:none;stroke:var(--fg2);stroke-width:1.25;opacity:.7" }, f.svg);
+  const [li, lv] = pts[pts.length - 1];
+  svgEl("circle", { cx: f.x(li), cy: f.y(lv), r: 4.5, class: "ring", style: `fill:var(${opt.color})` }, f.svg);
+  svgEl("text", { x: f.x(li) + 8, y: f.y(lv) + 4, class: "endlbl" }, f.svg).textContent = nf(lv, opt.dec || 0);
+  const dot = svgEl("circle", { r: 4.5, class: "ring", style: `fill:var(${opt.color})`, visibility: "hidden" }, f.svg);
+  hover(f, days, r => `${opt.label} <b>${r[key] == null ? "–" : nf(r[key], opt.dec || 0) + " " + opt.unit}</b>` + (days.length > 14 ? `<br>7-day avg ${nf(avg[days.indexOf(r)], opt.dec || 0)}` : ""),
+    i => { const v = i >= 0 ? days[i][key] : null; dot.setAttribute("visibility", v == null ? "hidden" : "visible"); if (v != null) { dot.setAttribute("cx", f.x(i)); dot.setAttribute("cy", f.y(v)); } });
+  if (days.length > 14) host.insertAdjacentHTML("beforeend", '<div class="legend" style="margin-top:6px"><span><i style="height:2px;background:var(--fg2)"></i>7-day average</span></div>');
+}
+
+const recStatus = v => v >= 67 ? ["Green", "--good"] : v >= 34 ? ["Yellow", "--warn"] : ["Red", "--crit"];
+
+function barChart(host, days, key, opt) {
+  if (!days.some(d => d[key] != null)) { host.innerHTML = '<p class="empty">No data in this range.</p>'; return; }
+  const f = frame(host, days, 0, opt.max, v => nf(v), 210, opt.ticks);
+  const gap = f.band > 6 ? 2 : f.band > 3 ? 1 : 0, w = Math.min(24, f.band - gap);
+  days.forEach((d, i) => { if (d[key] == null) return;
+    svgEl("path", { d: barPath(f.x(i) - w / 2, f.y(0), f.y(d[key]), w), style: `fill:var(${opt.color(d[key])})` }, f.svg); });
+  hover(f, days, opt.tip);
+  return f;
+}
+
+function sleepChart(host, days) {
+  const parts = [["deep", "--s1", "Deep"], ["remH", "--s2", "REM"], ["light", "--s3", "Light"], ["awake", "--s4", "Awake"]];
+  if (!days.some(d => d.sleep != null)) { host.innerHTML = '<p class="empty">No sleep data in this range.</p>'; return; }
+  const top = Math.max(...days.map(d => d.sleep != null ? d.sleep + d.awake : 0));
+  const f = frame(host, days, 0, top, v => nf(v) + "h");
+  const gap = f.band > 6 ? 2 : f.band > 3 ? 1 : 0, w = Math.min(24, f.band - gap);
+  days.forEach((d, i) => { if (d.sleep == null) return;
+    let acc = 0;
+    parts.forEach(([k, c], j) => {
+      const y0 = f.y(acc), y1 = f.y(acc + d[k]); acc += d[k];
+      const segGap = j && y0 - y1 > 3 ? 1 : 0; // 2px surface gap shared between neighbours
+      const isTop = j === parts.length - 1;
+      svgEl("path", { d: isTop ? barPath(f.x(i) - w / 2, y0 - segGap, y1, w) : `M${f.x(i) - w / 2},${y0 - segGap}V${y1 + (y0 - y1 > 3 ? 1 : 0)}H${f.x(i) + w / 2}V${y0 - segGap}Z`, style: `fill:var(${c})` }, f.svg);
+    });
+  });
+  hover(f, days, d => d.sleep == null ? "No sleep logged" :
+    `Asleep <b>${nf(d.sleep, 1)} h</b>` + (d.perf != null ? ` · ${nf(d.perf)}% perf` : "") + "<br>" +
+    parts.map(([k, , l]) => `${l} ${nf(d[k], 1)}`).join(" · "));
+}
+
+// ---------- render ----------
+const mean = (a, k) => { const v = a.map(d => d[k]).filter(x => x != null); return v.length ? v.reduce((s, x) => s + x, 0) / v.length : null; };
+const lastWith = (a, k) => { for (let i = a.length - 1; i >= 0; i--) if (a[i][k] != null) return a[i]; return null; };
+
+function render() {
+  if (!raw) return;
+  const all = raw.days;
+  const cutoff = range ? ymd(Date.now() - (range - 1) * DAY) : "";
+  let days = all.filter(d => d.day >= cutoff);
+  if (!days.length && all.length) days = all.slice(-(range || all.length)); // old export: show its last N days
+  document.querySelectorAll(".ranges button").forEach(b => b.setAttribute("aria-pressed", +b.dataset.r === range));
+  $("#who").textContent = raw.name && !isSample ? raw.name.split(" ")[0] + "’s WHOOP" : "WHOOP Stats Board";
+
+  const lr = lastWith(all, "rec"), tiles = [];
+  if (lr) { const [s, c] = recStatus(lr.rec);
+    tiles.push(`<div class="tile"><span class="k">Recovery · ${fmtDay(lr.day)}</span><span class="v">${nf(lr.rec)}<small>%</small></span><span class="chip"><i style="background:var(${c})"></i>${s}</span></div>`); }
+  const tile = (k, key, unit, dec = 0) => { const l = lastWith(days, key), a = mean(days, key); if (a == null) return;
+    tiles.push(`<div class="tile"><span class="k">${k}</span><span class="v">${nf(a, dec)}<small>${unit}</small></span><span class="d">avg · latest ${l ? nf(l[key], dec) : "–"}</span></div>`); };
+  tile("HRV", "hrv", "ms"); tile("Resting HR", "rhr", "bpm"); tile("Sleep", "sleep", "h", 1); tile("Day strain", "strain", "", 1);
+  const greens = days.filter(d => d.rec >= 67).length, withRec = days.filter(d => d.rec != null).length;
+  if (withRec) tiles.push(`<div class="tile"><span class="k">Green days</span><span class="v">${greens}<small>/ ${withRec}</small></span><span class="d">${nf(greens / withRec * 100)}% of scored days</span></div>`);
+  $("#tiles").innerHTML = tiles.join("");
+
+  barChart($("#c-rec"), days, "rec", { max: 100, ticks: [0, 33, 66, 100], color: v => recStatus(v)[1],
+    tip: d => d.rec == null ? "Not scored" : `Recovery <b>${d.rec}%</b> · ${recStatus(d.rec)[0]}` });
+  lineChart($("#c-hrv"), days, "hrv", { color: "--s1", label: "HRV", unit: "ms" });
+  lineChart($("#c-rhr"), days, "rhr", { color: "--s2", label: "RHR", unit: "bpm" });
+  sleepChart($("#c-sleep"), days);
+  barChart($("#c-strain"), days, "strain", { max: 21, ticks: [0, 7, 14, 21], color: () => "--s1",
+    tip: d => d.strain == null ? "Not scored" : `Strain <b>${nf(d.strain, 1)}</b>` + (d.kj ? ` · ${nf(d.kj / 4.184)} cal` : "") });
+
+  const wk = raw.workouts.filter(w => days.length && w.day >= days[0].day);
+  const by = {}; for (const w of wk) { const s = by[w.sport] ||= { n: 0, min: 0, strain: 0, km: 0 }; s.n++; s.min += w.min; s.strain += w.strain; s.km += w.km; }
+  const rows = Object.entries(by).sort((a, b) => b[1].n - a[1].n);
+  $("#wk-sub").textContent = `${wk.length} workouts · ${nf(wk.reduce((s, w) => s + w.min, 0) / 60, 1)} hours`;
+  $("#wk").innerHTML = rows.length ? `<table><thead><tr><th>Sport</th><th>Sessions</th><th>Total time</th><th>Avg strain</th><th>Distance</th></tr></thead><tbody>` +
+    rows.map(([k, s]) => `<tr><td>${esc(k)}</td><td>${s.n}</td><td>${nf(s.min / 60, 1)} h</td><td>${nf(s.strain / s.n, 1)}</td><td>${s.km ? nf(s.km, 1) + " km" : "–"}</td></tr>`).join("") + "</tbody></table>"
+    : '<p class="empty">No workouts in this range.</p>';
+
+  $("#daily").innerHTML = `<table><thead><tr><th>Day</th><th>Recovery</th><th>HRV</th><th>RHR</th><th>Sleep h</th><th>Sleep perf</th><th>Strain</th></tr></thead><tbody>` +
+    days.slice().reverse().map(d => `<tr><td>${fmtDay(d.day)}</td><td>${d.rec == null ? "–" : d.rec + "% " + recStatus(d.rec)[0]}</td><td>${nf(d.hrv)}</td><td>${nf(d.rhr)}</td><td>${nf(d.sleep, 1)}</td><td>${d.perf == null ? "–" : nf(d.perf) + "%"}</td><td>${nf(d.strain, 1)}</td></tr>`).join("") + "</tbody></table>";
+}
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+
+function banner(html, err) { const b = $("#banner"); b.innerHTML = html; b.classList.toggle("err", !!err); }
+function showSample() {
+  raw = normalize(sample()); isSample = true;
+  banner("<span><b>Sample data.</b> These numbers are made up. Load your <code>whoop_data.json</code> to see your own stats.</span>");
+  render();
+}
+function load(text, remember) {
+  try {
+    raw = normalize(JSON.parse(text)); isSample = false;
+    const span = raw.days.length ? `${fmtDay(raw.days[0].day)} – ${fmtDay(raw.days[raw.days.length - 1].day)}` : "no days";
+    const saved = remember && store.set(KEY, text);
+    banner(`<span><b>Your data</b> · ${raw.days.length} days (${span}), ${raw.workouts.length} workouts${saved ? " · saved in this browser" : ""}.</span><button type="button" id="forget">Forget my data</button>`);
+    $("#forget").onclick = () => { store.del(KEY); showSample(); };
+    render();
+  } catch (e) {
+    banner(`<span><b>Couldn't read that file.</b> ${esc(e instanceof SyntaxError ? "It isn't valid JSON. Pick the whoop_data.json file itself." : e.message)}</span>`, true);
+  }
+}
+
+$("#file").addEventListener("change", e => { const f = e.target.files[0]; if (f) f.text().then(t => load(t, true)); e.target.value = ""; });
+$("#demo").addEventListener("click", showSample);
+document.querySelectorAll(".ranges button").forEach(b => b.addEventListener("click", () => { range = +b.dataset.r; store.set(KEY + ":range", range); render(); }));
+const app = $("#app");
+app.addEventListener("dragover", e => { e.preventDefault(); app.classList.add("drop"); });
+app.addEventListener("dragleave", e => { if (e.target === app) app.classList.remove("drop"); });
+app.addEventListener("drop", e => { e.preventDefault(); app.classList.remove("drop"); const f = e.dataTransfer.files[0]; if (f) f.text().then(t => load(t, true)); });
+let rt; new ResizeObserver(() => { clearTimeout(rt); rt = setTimeout(render, 120); }).observe(app);
+
+const r = store.get(KEY + ":range"); if (r != null && [0, 7, 30, 90].includes(+r)) range = +r;
+const saved = store.get(KEY);
+saved ? load(saved, false) : showSample();
+if (saved && isSample) store.del(KEY);
+})();
+</script>
