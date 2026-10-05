@@ -1,6 +1,7 @@
 """Export WHOOP data (profile, body, recovery, cycles, sleep, workouts) to whoop_data.json.
 
 First run:   python whoop.py login     # opens the consent URL, paste back the redirect URL
+   or:       python whoop.py code <code or full redirect URL>   # if you built the consent URL yourself
 After that:  python whoop.py           # refreshes tokens as needed and exports
 
 Credentials come from the environment, never from this file:
@@ -57,10 +58,20 @@ def login():
         sys.exit("State mismatch -- paste the URL from this login attempt.")
     if "code" not in q:
         sys.exit("No ?code= in that URL: " + back)
-    save(post({"grant_type": "authorization_code", "code": q["code"][0],
+    exchange(q["code"][0])
+
+
+def exchange(code):
+    save(post({"grant_type": "authorization_code", "code": code,
                "client_id": CLIENT_ID, "client_secret": CLIENT_SECRET,
                "redirect_uri": REDIRECT}))
     print(f"Saved tokens to {STORE}.")
+
+
+def from_code(arg):
+    # accepts a bare code or the whole redirect URL; no state check since we didn't make the URL
+    q = urllib.parse.parse_qs(urllib.parse.urlparse(arg).query)
+    exchange(q["code"][0] if "code" in q else arg)
 
 
 def tokens():
@@ -112,4 +123,10 @@ def export():
 if __name__ == "__main__":
     if not (CLIENT_ID and CLIENT_SECRET):
         sys.exit("Set WHOOP_CLIENT_ID and WHOOP_CLIENT_SECRET first.")
-    login() if sys.argv[1:] == ["login"] else export()
+    args = sys.argv[1:]
+    if args == ["login"]:
+        login()
+    elif len(args) == 2 and args[0] == "code":
+        from_code(args[1])
+    else:
+        export()
