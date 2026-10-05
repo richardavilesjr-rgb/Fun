@@ -1,5 +1,5 @@
 """Phone-friendly WHOOP export: prompts for the secret and the redirect URL, writes whoop_data.json."""
-import json, os, time, urllib.parse, urllib.request
+import json, os, time, urllib.error, urllib.parse, urllib.request
 CLIENT_ID = "32aaeea5-8ee0-4f63-9c9c-c6552341d207"
 REDIRECT = "https://localhost:8080/callback"
 TOKEN_URL = "https://api.prod.whoop.com/oauth/oauth2/token"
@@ -8,10 +8,26 @@ UA = {"User-Agent": "whoop-dashboard/1.0"}
 SECRET = input("Paste your WHOOP client secret, then press return: ").strip()
 
 
+def fetch(req, tries=6):
+    # iSH connections drop a lot; retry with backoff instead of dying on the first hiccup
+    for i in range(tries):
+        try:
+            return json.load(urllib.request.urlopen(req, timeout=60))
+        except urllib.error.HTTPError as e:
+            if e.code not in (429, 500, 502, 503, 504) or i == tries - 1:
+                print("\nWHOOP said:", e.code, e.read().decode(errors="replace")[:300])
+                raise
+        except Exception as e:
+            if i == tries - 1:
+                raise
+            print("  connection hiccup (%s), retrying..." % type(e).__name__)
+        time.sleep(2 ** i)
+
+
 def post(d):
     r = urllib.request.Request(TOKEN_URL, data=urllib.parse.urlencode(d).encode(),
         headers={"Content-Type": "application/x-www-form-urlencoded", **UA})
-    return json.load(urllib.request.urlopen(r, timeout=30))
+    return fetch(r)
 
 
 def save(t):
@@ -41,14 +57,16 @@ def tokens():
 
 def get(p, at):
     r = urllib.request.Request(BASE + p, headers={"Authorization": "Bearer " + at, **UA})
-    return json.load(urllib.request.urlopen(r, timeout=30))
+    return fetch(r)
 
 
 def page(p, at):
     out, tok = [], None
+    print("Getting " + p.rsplit("/", 1)[-1] + "...")
     while True:
         d = get(p + "?limit=25" + ("&nextToken=" + urllib.parse.quote(tok) if tok else ""), at)
         out += d.get("records", [])
+        print("  %d so far" % len(out))
         tok = d.get("next_token")
         if not tok or len(out) >= 2000:
             return out
@@ -56,6 +74,7 @@ def page(p, at):
 
 
 at = tokens()["access_token"]
+print("Logged in. Downloading your data (keep this screen open)...")
 data = {"profile": get("/v2/user/profile/basic", at), "body": get("/v2/user/measurement/body", at),
     "recovery": page("/v2/recovery", at), "cycles": page("/v2/cycle", at),
     "sleep": page("/v2/activity/sleep", at), "workouts": page("/v2/activity/workout", at)}
